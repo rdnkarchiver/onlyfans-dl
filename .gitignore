@@ -3,7 +3,5 @@ __pycache__/
 .mypy_cache/
 
 # Project-related
-.venv/
-config.ini
 downloads/
 samples/
