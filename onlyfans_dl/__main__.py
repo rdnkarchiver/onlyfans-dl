@@ -26,6 +26,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', '-c', type=pathlib.Path, default=pathlib.Path(platformdirs.user_config_dir('onlyfans_dl'), 'scrapers.conf'))
     parser.add_argument('--run-forever', action='store_true')
+    parser.add_argument('users', nargs='*')
     return parser.parse_args()
 
 def build_config(config_file: pathlib.Path) -> configparser.ConfigParser:
@@ -72,24 +73,12 @@ def configure_clients(args: argparse.Namespace) -> list[OnlyFansScraper]:
     return clients
 
 
-def download(client: OnlyFansScraper) -> None:
+def download(client: OnlyFansScraper, *, users: list[User] | None, chats: list[User] | None) -> None:
     user_medias: dict[User, list[NormalizedMedia]] = {}
-    try:
-        subscriptions = client.get_subscriptions()
-        logger.info('got %d subscriptions with scraper %s', len(subscriptions), client.name)
-
-        chats = client.get_chats()
-        logger.info('got %d chats with scraper %s', len(chats), client.name)
-    except ScrapingException as e:
-        if request_exception := e.__context__ if isinstance(e.__context__, requests.RequestException) else None:
-            logger.error('failed to get subscriptions for scraper %s - status code %s', client.name, request_exception.response.status_code)
-        else:
-            logger.error('failed to get subscriptions for scraper %s', client.name)
-        return
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         logger.info('gathering posts with scraper %s', client.name)
-        future_to_user = {executor.submit(client.get_post_media_by_id, user.id): user for user in subscriptions}
+        future_to_user = {executor.submit(client.get_post_media_by_id, user.id): user for user in users}
         for future in concurrent.futures.as_completed(future_to_user):
             media_list = user_medias.get(future_to_user[future])
             if not media_list:
@@ -97,7 +86,7 @@ def download(client: OnlyFansScraper) -> None:
             user_medias[future_to_user[future]] += future.result()
 
         logger.info('gathering archived posts with scraper %s', client.name)
-        future_to_user = {executor.submit(client.get_archived_post_media_by_id, user.id): user for user in subscriptions}
+        future_to_user = {executor.submit(client.get_archived_post_media_by_id, user.id): user for user in users}
         for future in concurrent.futures.as_completed(future_to_user):
             media_list = user_medias.get(future_to_user[future])
             if not media_list:
@@ -105,7 +94,7 @@ def download(client: OnlyFansScraper) -> None:
             user_medias[future_to_user[future]] += future.result()
 
         logger.info('gathering messages with scraper %s', client.name)
-        future_to_user = {executor.submit(client.get_message_media_by_id, user): client.get_user_details(user) for user in chats}
+        future_to_user = {executor.submit(client.get_message_media_by_id, user.id): user for user in chats}
         for future in concurrent.futures.as_completed(future_to_user):
             media_list = user_medias.get(future_to_user[future])
             if not media_list:
@@ -113,7 +102,7 @@ def download(client: OnlyFansScraper) -> None:
             user_medias[future_to_user[future]] += future.result()
 
         logger.info('gathering highlights with scraper %s', client.name)
-        future_to_user = {executor.submit(client.get_highlight_media_by_id, user.id): user for user in subscriptions}
+        future_to_user = {executor.submit(client.get_highlight_media_by_id, user.id): user for user in users}
         for future in concurrent.futures.as_completed(future_to_user):
             media_list = user_medias.get(future_to_user[future])
             if not media_list:
@@ -122,7 +111,7 @@ def download(client: OnlyFansScraper) -> None:
 
         if not client.skip_temporary:
             logger.info('gathering stories with scraper %s', client.name)
-            future_to_user = {executor.submit(client.get_story_media_by_id, user.id): user for user in subscriptions}
+            future_to_user = {executor.submit(client.get_story_media_by_id, user.id): user for user in users}
             for future in concurrent.futures.as_completed(future_to_user):
                 media_list = user_medias.get(future_to_user[future])
                 if not media_list:
@@ -154,11 +143,41 @@ def main() -> None:
             iteration += 1
             logger.info('Starting iteration %d', iteration)
             for client in clients:
-                download(client)
+                if args.users:
+                    users = [client.get_user_details(user) for user in args.users]
+                else:
+                    try:
+                        users = client.get_subscriptions()
+                        logger.info('got %d subscriptions with scraper %s', len(users), client.name)
+
+                        chats = client.get_chats()
+                        logger.info('got %d chats with scraper %s', len(chats), client.name)
+                    except ScrapingException as e:
+                        if request_exception := e.__context__ if isinstance(e.__context__, requests.RequestException) else None:
+                            logger.error('failed to get subscriptions for scraper %s - status code %s', client.name, request_exception.response.status_code)
+                        else:
+                            logger.error('failed to get subscriptions for scraper %s', client.name)
+                        continue
+                download(client, users=client.get_subscriptions(), chats=client.get_chats())
             time.sleep(5)
     else:
         for client in clients:
-            download(client)
+            if args.users:
+                users = chats = [client.get_user_details(user) for user in args.users]
+            else:
+                try:
+                    users = client.get_subscriptions()
+                    logger.info('got %d subscriptions with scraper %s', len(users), client.name)
+
+                    chats = client.get_chats()
+                    logger.info('got %d chats with scraper %s', len(chats), client.name)
+                except ScrapingException as e:
+                    if request_exception := e.__context__ if isinstance(e.__context__, requests.RequestException) else None:
+                        logger.error('failed to get subscriptions for scraper %s - status code %s', client.name, request_exception.response.status_code)
+                    else:
+                        logger.error('failed to get subscriptions for scraper %s', client.name)
+                    continue
+            download(client, users=users, chats=chats)
 
 
 if __name__ == '__main__':

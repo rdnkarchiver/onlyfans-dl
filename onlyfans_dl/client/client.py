@@ -67,6 +67,7 @@ class OnlyFansScraper:
         user_agent: str = '',
         x_bc: str,
         download_root: str = 'downloads',
+        download_template: str,
         skip_temporary: bool = False,
     ):
         self.session = session
@@ -78,6 +79,7 @@ class OnlyFansScraper:
         self.x_bc = x_bc
 
         self.download_root = pathlib.Path(download_root)
+        self.download_template = download_template
         self.skip_temporary = skip_temporary
 
         # msgspec decoders
@@ -305,7 +307,7 @@ class OnlyFansScraper:
 
         return user_medias
 
-    def get_chats(self) -> list[int]:
+    def get_chats(self) -> list[User]:
         '''Retrieves all active chats.
 
         Returns:
@@ -314,7 +316,7 @@ class OnlyFansScraper:
         Raises:
             `ScrapingException`: An error occurred while retrieving or deserializing the chats.
         '''
-        chats: list[int] = []
+        chats: list[User] = []
 
         url = 'https://onlyfans.com/api2/v2/chats?offset={offset}'
         offset = 0
@@ -329,7 +331,7 @@ class OnlyFansScraper:
                     f.write(response.text)
                 raise ScrapingException(f'failed to deserialize chats with scraper "{self.name}" at offset {offset}')
 
-            chats += [chat.with_user.id for chat in decoded_chats.chats]
+            chats += [self.get_user_details(chat.with_user.id) for chat in decoded_chats.chats]
             if not decoded_chats.has_more:
                 return chats
             offset = decoded_chats.next_offset
