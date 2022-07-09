@@ -50,13 +50,16 @@ class Post(msgspec.Struct, rename='camel'):
     id: int
     posted_at: str
     posted_at_precise: str
-    expired_at: str | None
-    author: User
-    raw_text: str | None
-    price: int | float | None
-    is_archived: bool
-    media: list[Media]
-    preview: list[int]
+    # In the event of a reported post, all of these will not be included in the
+    # response, so they are defaulted to `None`.
+    # This behaves similar to `omitempty` in Golang.
+    expired_at: str | None = None
+    author: User | None = None
+    raw_text: str | None = None
+    price: int | float | None = None
+    is_archived: bool | None = None
+    media: list[Media] | None = None
+    preview: list[int | str] | None = None
 
 
 class Posts(msgspec.Struct, rename={'has_more': 'hasMore', 'posts': 'list'}.get):
@@ -197,7 +200,7 @@ class NormalizedMedia(msgspec.Struct):
 
 def normalize_post_media(post: Post, skip_temporary: bool = False) -> list[NormalizedMedia]:
     nm: list[NormalizedMedia] = []
-    if post.expired_at and skip_temporary:
+    if not post.media or (post.expired_at and skip_temporary):
         return nm
     else:
         for media in post.media:
@@ -223,7 +226,7 @@ def normalize_post_media(post: Post, skip_temporary: bool = False) -> list[Norma
 
 def normalize_archived_post_media(post: Post, skip_temporary: bool = False) -> list[NormalizedMedia]:
     nm: list[NormalizedMedia] = []
-    if post.expired_at and skip_temporary:
+    if not post.media or (post.expired_at and skip_temporary):
         return nm
     else:
         for media in post.media:
