@@ -52,7 +52,6 @@ class Post(msgspec.Struct, rename='camel'):
     posted_at_precise: str
     # In the event of a reported post, all of these will not be included in the
     # response, so they are defaulted to `None`.
-    # This behaves similar to `omitempty` in Golang.
     expired_at: str | None = None
     author: User | None = None
     raw_text: str | None = None
@@ -188,13 +187,13 @@ class NormalizedMedia(msgspec.Struct):
     id: int
     file_type: str
     created_at: str
-    value: str
     text: str
     width: int
     height: int
     duration: int
     url: str
     expired_at: str | None = None
+    value: str = 'free'
     highlight_category: str | None = None
 
 
